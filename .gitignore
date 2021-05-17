@@ -1,6 +1,14 @@
 # .gitignore for Bram Pronk Personal Repository - CSE3000 Research Project - Group 21
 
 # Don't track the content of these folders
+/idea
+*__pycache__*
+/experiments
+src/.ipynb_checkpoints
+/data
 
 # Don't track these files
 .DS_Store
+.idea
+*.pyc
+.Rhistory
