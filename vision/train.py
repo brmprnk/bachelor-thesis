@@ -142,12 +142,14 @@ if __name__ == "__main__":
 
     train_loader = torch.utils.data.DataLoader(
         datasets.TCGADataset(partition='train'),
-        batch_size=args.batch_size, shuffle=True)
+        batch_size=args.batch_size, shuffle=False)
     test_loader = torch.utils.data.DataLoader(
         datasets.TCGADataset(partition='val'),
         batch_size=args.batch_size, shuffle=False)
     
     total_batches = len(train_loader)
+    total_test_batches = len(test_loader)
+
     model = MVAE(args.n_latents, use_cuda=args.cuda)
 
     # Log Data shape, input arguments and model
@@ -158,7 +160,6 @@ if __name__ == "__main__":
     model_file.write("PoE Model : {}".format(model))
     model_file.close()
 
-    print(model)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.cuda:
@@ -262,24 +263,36 @@ if __name__ == "__main__":
                 # by default the KL annealing factor is unity
                 annealing_factor = 1.0
 
-            batch_size = 256
-
             # for ease, only compute the joint loss
             (joint_recon_rna, joint_recon_gcn, joint_mu, joint_logvar) = model(rna, gcn)
 
-            # compute joint loss
-            joint_train_loss = elbo_loss(joint_recon_rna, rna,
-                                         joint_recon_gcn, gcn,
-                                         joint_mu, joint_logvar,
-                                         annealing_factor=annealing_factor)
+            kld_weight = len(rna) / len(train_loader.dataset) # Account for the minibatch samples from the dataset
 
-            test_loss += joint_train_loss.item()
+            # Compute joint loss
+            joint_test_loss = loss_function(joint_recon_rna, rna,
+                                            joint_recon_gcn, gcn,
+                                            joint_mu, joint_logvar, kld_weight)
+
+            # # compute joint loss
+            # joint_train_loss = elbo_loss(joint_recon_rna, rna,
+            #                              joint_recon_gcn, gcn,
+            #                              joint_mu, joint_logvar,
+            #                              annealing_factor=annealing_factor)
+
+            test_loss_meter.update(joint_test_loss['loss'], len(rna))
+            test_recon_loss_meter.update(joint_test_loss['Reconstruction_Loss'], len(rna))
+            test_kld_loss_meter.update(joint_test_loss['KLD'], len(rna))
+
+            test_loss += joint_test_loss['loss']
 
             progress_bar.update()
 
         progress_bar.close()
         test_loss /= len(test_loader)
         print('====> Test Loss: {:.4f}'.format(test_loss))
+        print('====> Test Loss: {}\tLoss: {:.4f}'.format(epoch, test_loss_meter.avg))
+        print('====> Test Loss: {}\tReconstruction Loss: {:.4f}'.format(epoch, test_recon_loss_meter.avg))
+        print('====> Test Loss: {}\tKLD Loss: {:.4f}'.format(epoch, test_kld_loss_meter.avg))
         return test_loss
 
 
@@ -287,6 +300,10 @@ if __name__ == "__main__":
     train_loss_meter = AverageMeter("Loss")
     train_recon_loss_meter = AverageMeter("Reconstruction Loss")
     train_kld_loss_meter = AverageMeter("KLD Loss")
+
+    test_loss_meter = AverageMeter("Validation Loss")
+    test_recon_loss_meter = AverageMeter("Validation Reconstruction Loss")
+    test_kld_loss_meter = AverageMeter("Validation KLD Loss")
     for epoch in range(1, args.epochs + 1):
         train(epoch, train_loss_meter, train_recon_loss_meter, train_kld_loss_meter)
         loss = test(epoch)
@@ -319,7 +336,6 @@ if __name__ == "__main__":
     fig2 = plt.figure(2)
     ax2 = fig2.add_subplot(111)
     plt.plot(x_axis, train_recon_loss_meter.values[::total_batches], marker='.', color='tab:orange')
-    print(train_recon_loss_meter.values[::total_batches])
     for x, y in zip(x_axis, train_recon_loss_meter.values[::total_batches]):
         if x == 1 or x % 25 == 0:
             ax2.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
@@ -330,12 +346,48 @@ if __name__ == "__main__":
 
     # KLD Loss
     fig3 = plt.figure(3)
-    ax2 = fig3.add_subplot(111)
+    ax3 = fig3.add_subplot(111)
     plt.plot(x_axis, train_kld_loss_meter.values[::total_batches], marker='.', color='tab:red')
     for x, y in zip(x_axis, train_kld_loss_meter.values[::total_batches]):
         if x == 1 or x % 25 == 0:
-            ax2.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
+            ax3.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
     plt.xlabel("Epochs")
     plt.ylabel("Average KLD Loss")
     plt.savefig("{}/KLD Loss {}.png".format(save_dir, dt_string), dpi=400)
+
+    # Validation Loss
+    fig4 = plt.figure(4)
+    ax4 = fig4.add_subplot(111)
+    plt.plot(x_axis, test_loss_meter.values[::total_test_batches], marker='.', color='tab:purple')
+    for x, y in zip(x_axis, test_loss_meter.values[::total_test_batches]):
+        if x == 1 or x % 25 == 0:
+            ax4.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
+    plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
+    plt.xlabel("Epochs")
+    plt.ylabel("Average Validation Loss")
+    plt.savefig("{}/Validation Loss {}.png".format(save_dir, dt_string), dpi=400)
+
+    # Validation Reconstruction Loss
+    fig5 = plt.figure(5)
+    ax5 = fig5.add_subplot(111)
+    plt.plot(x_axis, test_recon_loss_meter.values[::total_test_batches], marker='.', color='tab:orange')
+    for x, y in zip(x_axis, test_recon_loss_meter.values[::total_test_batches]):
+        if x == 1 or x % 25 == 0:
+            ax5.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
+    plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
+    plt.xlabel("Epochs")
+    plt.ylabel("Average Validation Reconstruction Loss")
+    plt.savefig("{}/Validation Recon Loss {}.png".format(save_dir, dt_string), dpi=400)
+
+    # Validation KLD Loss
+    fig6 = plt.figure(6)
+    ax6 = fig6.add_subplot(111)
+    plt.plot(x_axis, test_kld_loss_meter.values[::total_test_batches], marker='.', color='tab:red')
+    for x, y in zip(x_axis, test_kld_loss_meter.values[::total_test_batches]):
+        if x == 1 or x % 25 == 0:
+            ax6.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
+    plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
+    plt.xlabel("Epochs")
+    plt.ylabel("Average Validation KLD Loss")
+    plt.savefig("{}/Validation KLD Loss {}.png".format(save_dir, dt_string), dpi=400)
