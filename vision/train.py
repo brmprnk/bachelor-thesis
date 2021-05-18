@@ -1,7 +1,3 @@
-from __future__ import division
-from __future__ import print_function
-from __future__ import absolute_import
-
 import os
 import sys
 import shutil
@@ -37,6 +33,7 @@ def elbo_loss(recon_image, image, recon_gray, gray, mu, logvar, annealing_factor
     # NOTE: we use lambda_i = 1 for all i since each modality is roughly equal
     ELBO = torch.mean(BCE / float(N_MODALITIES) + annealing_factor * KLD)
     return ELBO
+
 
 def binary_cross_entropy_with_logits(input, target):
     """Sigmoid Activation + Binary Cross Entropy
@@ -96,13 +93,27 @@ class AverageMeter(object):
         self.values.append(self.avg.item())
 
 
-def save_checkpoint(state, is_best, folder='./', filename='checkpoint.pth.tar'):
+def save_checkpoint(state, lowest_loss, folder='./trained_models', filename='checkpoint.pth.tar'):
+    """
+    Saves a Pytorch model's state, and also saves it to a separate object if it is the best model (lowest loss) thus far
+
+    @param state:       Python dictionary containing the model's state
+    @param lowest_loss: Boolean check if the current checkpoint has had the best (lowest) loss so far
+    @param folder:      String of the folder to save the model to
+    @param filename:    String of the model's output name
+    @return: None
+    """
     if not os.path.isdir(folder):
         os.mkdir(folder)
+
+    # Save checkpoint
     torch.save(state, os.path.join(folder, filename))
-    if is_best:
+
+    # If this is the best checkpoint (lowest loss) thus far, copy this model to a file named model_best
+    if lowest_loss:
+        print("Best epoch thus far (lowest loss) --> Saving to model_best")
         shutil.copyfile(os.path.join(folder, filename),
-                        os.path.join(folder, 'model_best.pth.tar'))
+                        os.path.join(folder, '80RNA_GCN.pth.tar'))
 
 
 def load_checkpoint(file_path, use_cuda=False):
