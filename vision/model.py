@@ -5,19 +5,20 @@ from __future__ import absolute_import
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from torch.nn import functional as F
 
 
 class MVAE(nn.Module):
     def __init__(self, latent_dim=100, use_cuda=False):
         super(MVAE, self).__init__()
         # define q(z|x_i) for i = 1...2
-        self.rna_encoder = Encoder(latent_dim, 3)
-        self.gcn_encoder = Encoder(latent_dim, 1)
+        self.rna_encoder = Encoder(latent_dim)
+        self.gcn_encoder = Encoder(latent_dim)
+        self.dna_encoder = Encoder(latent_dim)
 
         # define p(x_i|z) for i = 1...2
-        self.rna_decoder = Decoder(latent_dim, 3)
-        self.gcn_decoder = Decoder(latent_dim, 1)
+        self.rna_decoder = Decoder(latent_dim)
+        self.gcn_decoder = Decoder(latent_dim)
+        self.dna_decoder = Decoder(latent_dim)
 
         # define q(z|x) = q(z|x_1)...q(z|x_6)
         self.experts = ProductOfExperts()
@@ -32,8 +33,8 @@ class MVAE(nn.Module):
         else:  # return mean during inference
             return mu
 
-    def forward(self, rna=None, gcn=None):
-        mu, logvar = self.get_params(rna=rna, gcn=gcn)
+    def forward(self, rna=None, gcn=None, dna=None):
+        mu, logvar = self.get_params(rna=rna, gcn=gcn, dna=dna)
 
         # re-parameterization trick to sample
         z = self.reparameterize(mu, logvar)
@@ -41,35 +42,48 @@ class MVAE(nn.Module):
         # reconstruct inputs based on sample
         rna_recon = self.rna_decoder(z)
         gcn_recon = self.gcn_decoder(z)
+        dna_recon = self.dna_decoder(z)
 
-        return rna_recon, gcn_recon, mu, logvar
+        return rna_recon, gcn_recon, dna_recon, mu, logvar
 
-    def get_params(self, rna=None, gcn=None):
+    def get_params(self, rna=None, gcn=None, dna=None):
         # define universal expert
-        batch_size = get_batch_size(rna, gcn)
-        use_cuda = next(self.parameters()).is_cuda  # check if CUDA
+        batch_size = get_batch_size(rna, gcn, dna)
         # initialize the universal prior expert
-        mu, logvar = prior_expert((1, batch_size, self.latent_dim), use_cuda=use_cuda)
+        mu, logvar = prior_expert((1, batch_size, self.latent_dim))
 
         if rna is not None:
             rna_mu, rna_logvar = self.rna_encoder(rna)
+
             mu = torch.cat((mu, rna_mu.unsqueeze(0)), dim=0)
             logvar = torch.cat((logvar, rna_logvar.unsqueeze(0)), dim=0)
 
         if gcn is not None:
             gcn_mu, gcn_logvar = self.gcn_encoder(gcn)
+
             mu = torch.cat((mu, gcn_mu.unsqueeze(0)), dim=0)
             logvar = torch.cat((logvar, gcn_logvar.unsqueeze(0)), dim=0)
 
+        if dna is not None:
+            dna_mu, dna_logvar = self.dna_encoder(dna)
+
+            mu = torch.cat((mu, dna_mu.unsqueeze(0)), dim=0)
+            logvar = torch.cat((logvar, dna_logvar.unsqueeze(0)), dim=0)
+
         # product of experts to combine Gaussian's
         mu, logvar = self.experts(mu, logvar)
+
         return mu, logvar
 
 
-def get_batch_size(*args):
-    for arg in args:
-        if arg is not None:
-            return arg.size(0)
+def get_batch_size(rna, gcn, dna):
+    if rna is None:
+        if gcn is None:
+            return dna.size(0)
+        else:
+            return gcn.size(0)
+    else:
+        return rna.size(0)
 
 
 class Encoder(nn.Module):
@@ -79,15 +93,12 @@ class Encoder(nn.Module):
 
     @param latent_dim: integer
                       number of latent dimensions
-    @param n_channels: integer [default: 3]
-                       number of input channels
     """
 
-    def __init__(self, latent_dim, n_channels=3):
+    def __init__(self, latent_dim):
         super(Encoder, self).__init__()
 
-        latent_dim = 100
-        input_size = 5000
+        input_size = 3000
         hidden_dims = [256]
 
         modules = []
@@ -119,7 +130,6 @@ class Encoder(nn.Module):
         mu = self.fc_mu(result)
         log_var = self.fc_var(result)
 
-
         return mu, log_var
 
 
@@ -129,15 +139,13 @@ class Decoder(nn.Module):
     We will use this for every p(x_i|z) for all i.
 
     @param latent_dim: integer
-                      number of latent dimensions
-    @param n_channels: integer [default: 3]
-                       number of input channels
+                      number of latent dimension
     """
 
-    def __init__(self, latent_dim, n_channels=3):
+    def __init__(self, latent_dim):
         super(Decoder, self).__init__()
-        latent_dim = 100
-        input_size = 5000
+
+        input_size = 3000
         hidden_dims = [256]
 
         self.decoder = nn.Sequential(
@@ -160,12 +168,16 @@ class Decoder(nn.Module):
 class ProductOfExperts(nn.Module):
     """Return parameters for product of independent experts.
     See https://arxiv.org/pdf/1410.7827.pdf for equations.
-
-    @param mu: M x D for M experts
-    @param logvar: M x D for M experts
     """
 
-    def forward(self, mu, logvar, eps=1e-8):
+    @classmethod
+    def forward(cls, mu, logvar, eps=1e-8):
+        """
+        @param mu: M x D for M experts
+        @param logvar: M x D for M experts
+        @param eps: A small constant
+        @return:
+        """
         var = torch.exp(logvar) + eps
         T = 1 / (var + eps)  # precision of i-th Gaussian expert at point x
         pd_mu = torch.sum(mu * T, dim=0) / torch.sum(T, dim=0)

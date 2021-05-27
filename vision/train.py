@@ -1,6 +1,5 @@
 import os
 import sys
-import shutil
 from datetime import datetime
 
 from tqdm import tqdm
@@ -9,10 +8,12 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from model import MVAE
-from datasets import N_MODALITIES
 import datasets as datasets
 
+import numpy as np
 import matplotlib.pyplot as plt
+
+N_MODALITIES = 3
 
 
 def elbo_loss(recon_image, image, recon_gray, gray, mu, logvar, annealing_factor=1.):
@@ -50,7 +51,7 @@ def binary_cross_entropy_with_logits(input, target):
             + torch.log(1 + torch.exp(-torch.abs(input))))
 
 
-def loss_function(recon_rna, rna, recon_gcn, gcn, mu, log_var, kld_weight) -> dict:
+def loss_function(recon_rna, rna, recon_gcn, gcn, recon_dna, dna, mu, log_var, kld_weight) -> dict:
     """
     Computes the VAE loss function.
     KL(N(\mu, \sigma), N(0, 1)) = \log \frac{1}{\sigma} + \frac{\sigma^2 + \mu^2}{2} - \frac{1}{2}
@@ -60,14 +61,18 @@ def loss_function(recon_rna, rna, recon_gcn, gcn, mu, log_var, kld_weight) -> di
     # Reconstruction loss
     recons_loss = 0
     if recon_rna is not None and rna is not None:
-        recons_loss = F.mse_loss(recon_rna, rna)
+        recons_loss += F.mse_loss(recon_rna, rna)
     if recon_gcn is not None and gcn is not None:
-        recons_loss = F.mse_loss(recon_gcn, gcn)
+        recons_loss += F.mse_loss(recon_gcn, gcn)
+    if recon_dna is not None and dna is not None:
+        recons_loss += F.mse_loss(recon_dna, dna)
 
-    recons_loss /= float(2)  # Account for number of modalities
+    recons_loss /= float(N_MODALITIES)  # Account for number of modalities
+    # print("recons_loss", recons_loss)
 
     # KLD Loss
     kld_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
+    # print("kld loss", kld_loss)
 
     # Loss
     loss = recons_loss + kld_weight * kld_loss
@@ -93,27 +98,23 @@ class AverageMeter(object):
         self.values.append(self.avg.item())
 
 
-def save_checkpoint(state, lowest_loss, folder='./trained_models', filename='checkpoint.pth.tar'):
+def save_checkpoint(state, lowest_loss, save_dir):
     """
     Saves a Pytorch model's state, and also saves it to a separate object if it is the best model (lowest loss) thus far
 
     @param state:       Python dictionary containing the model's state
     @param lowest_loss: Boolean check if the current checkpoint has had the best (lowest) loss so far
-    @param folder:      String of the folder to save the model to
+    @param save_dir:      String of the folder to save the model to
     @param filename:    String of the model's output name
     @return: None
     """
-    if not os.path.isdir(folder):
-        os.mkdir(folder)
-
     # Save checkpoint
-    torch.save(state, os.path.join(folder, filename))
+    # torch.save(state, os.path.join(save_dir, filename))
 
     # If this is the best checkpoint (lowest loss) thus far, copy this model to a file named model_best
     if lowest_loss:
         print("Best epoch thus far (lowest loss) --> Saving to model_best")
-        shutil.copyfile(os.path.join(folder, filename),
-                        os.path.join(folder, '80RNA_GCN.pth.tar'))
+        torch.save(state, os.path.join(save_dir, 'with_prior.pth.tar'))
 
 
 def load_checkpoint(file_path, use_cuda=False):
@@ -141,8 +142,17 @@ if __name__ == "__main__":
                         help='how many batches to wait before logging training status')
     parser.add_argument('--cuda', action='store_true', default=False,
                         help='enables CUDA training')
+    parser.add_argument('--seed', type=int, default=1,
+                        help='random seed (default: 1)')
+
     args = parser.parse_args()
     args.cuda = args.cuda and torch.cuda.is_available()
+
+    # random seed
+    # https://pytorch.org/docs/stable/notes/randomness.html
+    torch.backends.cudnn.benchmark = True
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     # Current Time for output files
     now = datetime.now()
@@ -151,26 +161,29 @@ if __name__ == "__main__":
     save_dir = './results/PoE {}'.format(dt_string)
     os.makedirs(save_dir)
 
-    train_loader = torch.utils.data.DataLoader(
-        datasets.TCGADataset(partition='train'),
-        batch_size=args.batch_size, shuffle=False)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.TCGADataset(partition='val'),
-        batch_size=args.batch_size, shuffle=False)
-    
-    total_batches = len(train_loader)
-    total_test_batches = len(test_loader)
+    # Fetch Datasets
+    tcga_data = datasets.TCGAData(save_dir=save_dir)
+    train_dataset = tcga_data.get_data_partition("train")
+    val_dataset = tcga_data.get_data_partition("val")
 
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=len(val_dataset), shuffle=False)  # (1 batch)
+
+    total_batches = len(train_loader)
+    total_val_batches = len(val_loader)  # Should be 1
+
+    # Setup and log model
     model = MVAE(args.n_latents, use_cuda=args.cuda)
 
     # Log Data shape, input arguments and model
     model_file = open("{}/Model {}.txt".format(save_dir, dt_string), "a")
     model_file.write("Running at {}\n".format(dt_string))
-    model_file.write("Input shape : {}, 5000\n".format(len(train_loader.dataset)))
+    model_file.write("Input shape : {}, 3000\n".format(len(train_loader.dataset)))
     model_file.write("Input args : {}\n".format(args))
     model_file.write("PoE Model : {}".format(model))
     model_file.close()
 
+    # Preparation for training
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     if args.cuda:
@@ -179,15 +192,16 @@ if __name__ == "__main__":
     def train(epoch, train_loss_meter, train_recon_loss_meter, train_kld_loss_meter):
         model.train()
 
-        for batch_idx, (rna, gcn) in enumerate(train_loader):
+        progress_bar = tqdm(total=len(train_loader))
+        for batch_idx, (rna, gcn, dna) in enumerate(train_loader):
 
-            if epoch < args.annealing_epochs:
-                # compute the KL annealing factor for the current mini-batch in the current epoch
-                annealing_factor = (float(batch_idx + (epoch - 1) * total_batches + 1) /
-                                    float(args.annealing_epochs * total_batches))
-            else:
-                # by default the KL annealing factor is unity
-                annealing_factor = 1.0
+            # if epoch < args.annealing_epochs:
+            #     # compute the KL annealing factor for the current mini-batch in the current epoch
+            #     annealing_factor = (float(batch_idx + (epoch - 1) * total_batches + 1) /
+            #                         float(args.annealing_epochs * total_batches))
+            # else:
+            #     # by default the KL annealing factor is unity
+            #     annealing_factor = 1.0
 
             # refresh the optimizer
             optimizer.zero_grad()
@@ -195,30 +209,40 @@ if __name__ == "__main__":
             kld_weight = len(rna) / len(train_loader.dataset) # Account for the minibatch samples from the dataset
 
             # compute reconstructions using all the modalities
-            (joint_recon_rna, joint_recon_gcn, joint_mu, joint_logvar) = model(rna, gcn)
+            (joint_recon_rna, joint_recon_gcn, joint_recon_dna, joint_mu, joint_logvar) = model(rna, gcn, dna)
 
             # compute reconstructions using each of the individual modalities
-            (rna_recon_rna, rna_recon_gcn, rna_mu, rna_logvar) = model(rna=rna)
+            (rna_recon_rna, rna_recon_gcn, rna_recon_dna, rna_mu, rna_logvar) = model(rna=rna)
 
-            (gcn_recon_rna, gcn_recon_gcn, gcn_mu, gcn_logvar) = model(gcn=gcn)
+            (gcn_recon_rna, gcn_recon_gcn, gcn_recon_dna, gcn_mu, gcn_logvar) = model(gcn=gcn)
 
-            # Compute joint loss
+            (dna_recon_rna, dna_recon_gcn, dna_recon_dna, dna_mu, dna_logvar) = model(dna=dna)
+
+            # Compute joint train loss
             joint_train_loss = loss_function(joint_recon_rna, rna,
                                              joint_recon_gcn, gcn,
+                                             joint_recon_dna, dna,
                                              joint_mu, joint_logvar, kld_weight)
 
             # compute loss with single modal inputs
             rna_train_loss = loss_function(rna_recon_rna, rna,
                                            rna_recon_gcn, gcn,
+                                           rna_recon_dna, dna,
                                            rna_mu, rna_logvar, kld_weight)
 
             gcn_train_loss = loss_function(gcn_recon_rna, rna,
                                            gcn_recon_gcn, gcn,
+                                           gcn_recon_dna, dna,
                                            gcn_mu, gcn_logvar, kld_weight)
 
-            train_loss = joint_train_loss['loss'] + rna_train_loss['loss'] + gcn_train_loss['loss']
-            train_recon_loss = joint_train_loss['Reconstruction_Loss'] + rna_train_loss['Reconstruction_Loss'] + gcn_train_loss['Reconstruction_Loss']
-            train_kld_loss = joint_train_loss['KLD'] + rna_train_loss['KLD'] + gcn_train_loss['KLD']
+            dna_train_loss = loss_function(dna_recon_rna, rna,
+                                           dna_recon_gcn, gcn,
+                                           dna_recon_dna, dna,
+                                           dna_mu, dna_logvar, kld_weight)
+
+            train_loss = joint_train_loss['loss'] + rna_train_loss['loss'] + gcn_train_loss['loss'] + dna_train_loss['loss']
+            train_recon_loss = joint_train_loss['Reconstruction_Loss'] + rna_train_loss['Reconstruction_Loss'] + gcn_train_loss['Reconstruction_Loss'] + dna_train_loss['Reconstruction_Loss']
+            train_kld_loss = joint_train_loss['KLD'] + rna_train_loss['KLD'] + gcn_train_loss['KLD'] + dna_train_loss['KLD']
 
             train_loss_meter.update(train_loss, len(rna))
             train_recon_loss_meter.update(train_recon_loss, len(rna))
@@ -250,38 +274,45 @@ if __name__ == "__main__":
             train_loss.backward()
             optimizer.step()
 
-            if batch_idx % args.log_interval == 0:
-                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tAnnealing Factor: {:.3f}'.format(
-                    epoch, batch_idx * len(rna), len(train_loader.dataset),
-                    100. * batch_idx / len(train_loader), train_loss_meter.avg, annealing_factor))
+            # if batch_idx % args.log_interval == 0:
+            #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            #         epoch, batch_idx * len(rna), len(train_loader.dataset),
+            #         100. * batch_idx / len(train_loader), train_loss_meter.avg))
 
+            progress_bar.update()
+
+        progress_bar.close()
         print('====> Epoch: {}\tLoss: {:.4f}'.format(epoch, train_loss_meter.avg))
         print('====> Epoch: {}\tReconstruction Loss: {:.4f}'.format(epoch, train_recon_loss_meter.avg))
         print('====> Epoch: {}\tKLD Loss: {:.4f}'.format(epoch, train_kld_loss_meter.avg))
 
-    def test(epoch):
+
+    def test(epoch, val_loss_meter, val_recon_loss_meter, val_kld_loss_meter):
         model.eval()
         test_loss = 0
 
-        progress_bar = tqdm(total=len(test_loader))
-        for batch_idx, (rna, gcn) in enumerate(test_loader):
-
-            if epoch < args.annealing_epochs:
-                # compute the KL annealing factor for the current mini-batch in the current epoch
-                annealing_factor = (float(batch_idx + (epoch - 1) * total_batches + 1) /
-                                    float(args.annealing_epochs * total_batches))
-            else:
-                # by default the KL annealing factor is unity
-                annealing_factor = 1.0
+        for batch_idx, (rna, gcn, dna) in enumerate(val_loader):
+            if batch_idx > 0:
+                print("Is there something wrong?")
+            #
+            # if epoch < args.annealing_epochs:
+            #     # compute the KL annealing factor for the current mini-batch in the current epoch
+            #     annealing_factor = (float(batch_idx + (epoch - 1) * total_batches + 1) /
+            #                         float(args.annealing_epochs * total_batches))
+            # else:
+            #     # by default the KL annealing factor is unity
+            #     annealing_factor = 1.0
 
             # for ease, only compute the joint loss
-            (joint_recon_rna, joint_recon_gcn, joint_mu, joint_logvar) = model(rna, gcn)
+            (joint_recon_rna, joint_recon_gcn, joint_recon_dna, joint_mu, joint_logvar) = model(rna, gcn)
 
-            kld_weight = len(rna) / len(train_loader.dataset) # Account for the minibatch samples from the dataset
+            print("LEN RNA", len(rna), len(val_loader.dataset))
+            kld_weight = len(rna) / len(val_loader.dataset)  # Account for the minibatch samples from the dataset
 
             # Compute joint loss
             joint_test_loss = loss_function(joint_recon_rna, rna,
                                             joint_recon_gcn, gcn,
+                                            joint_recon_dna, dna,
                                             joint_mu, joint_logvar, kld_weight)
 
             # # compute joint loss
@@ -290,43 +321,37 @@ if __name__ == "__main__":
             #                              joint_mu, joint_logvar,
             #                              annealing_factor=annealing_factor)
 
-            test_loss_meter.update(joint_test_loss['loss'], len(rna))
-            test_recon_loss_meter.update(joint_test_loss['Reconstruction_Loss'], len(rna))
-            test_kld_loss_meter.update(joint_test_loss['KLD'], len(rna))
+            val_loss_meter.update(joint_test_loss['loss'], len(rna))
+            val_recon_loss_meter.update(joint_test_loss['Reconstruction_Loss'], len(rna))
+            val_kld_loss_meter.update(joint_test_loss['KLD'], len(rna))
 
             test_loss += joint_test_loss['loss']
 
-            progress_bar.update()
-
-        progress_bar.close()
-        test_loss /= len(test_loader)
         print('====> Test Loss: {:.4f}'.format(test_loss))
-        print('====> Test Loss: {}\tLoss: {:.4f}'.format(epoch, test_loss_meter.avg))
-        print('====> Test Loss: {}\tReconstruction Loss: {:.4f}'.format(epoch, test_recon_loss_meter.avg))
-        print('====> Test Loss: {}\tKLD Loss: {:.4f}'.format(epoch, test_kld_loss_meter.avg))
-        return test_loss
+        print('====> Test Loss: {}\tLoss: {:.4f}'.format(epoch, val_loss_meter.avg))
+        print('====> Test Loss: {}\tReconstruction Loss: {:.4f}'.format(epoch, val_recon_loss_meter.avg))
+        print('====> Test Loss: {}\tKLD Loss: {:.4f}'.format(epoch, val_kld_loss_meter.avg))
+        return val_loss_meter.avg
 
 
-    best_loss = sys.maxsize
     train_loss_meter = AverageMeter("Loss")
     train_recon_loss_meter = AverageMeter("Reconstruction Loss")
     train_kld_loss_meter = AverageMeter("KLD Loss")
 
-    test_loss_meter = AverageMeter("Validation Loss")
-    test_recon_loss_meter = AverageMeter("Validation Reconstruction Loss")
-    test_kld_loss_meter = AverageMeter("Validation KLD Loss")
+    val_loss_meter = AverageMeter("Validation Loss")
+    val_recon_loss_meter = AverageMeter("Validation Reconstruction Loss")
+    val_kld_loss_meter = AverageMeter("Validation KLD Loss")
     for epoch in range(1, args.epochs + 1):
         train(epoch, train_loss_meter, train_recon_loss_meter, train_kld_loss_meter)
-        loss = test(epoch)
-        is_best = loss < best_loss
-        best_loss = min(loss, best_loss)
+        latest_loss = test(epoch, val_loss_meter, val_recon_loss_meter, val_kld_loss_meter)
+
         # save the best model and current model
         save_checkpoint({
             'state_dict': model.state_dict(),
-            'best_loss': best_loss,
+            'best_loss': latest_loss,
             'latent_dim': args.n_latents,
             'optimizer': optimizer.state_dict(),
-        }, is_best, folder='./trained_models')
+        }, True, save_dir)
 
     # Do some plotting
     x_axis = [*range(1, args.epochs + 1)]
@@ -340,7 +365,7 @@ if __name__ == "__main__":
             ax1.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
     plt.xlabel("Epochs")
-    plt.ylabel("Average Loss")
+    plt.ylabel("Average Training Loss")
     plt.savefig("{}/Loss {}.png".format(save_dir, dt_string), dpi=400)
 
     # Reconstruction Loss
@@ -352,7 +377,7 @@ if __name__ == "__main__":
             ax2.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
     plt.xlabel("Epochs")
-    plt.ylabel("Average Reconstruction Loss")
+    plt.ylabel("Average Training Reconstruction Loss")
     plt.savefig("{}/Recon Loss {}.png".format(save_dir, dt_string), dpi=400)
 
     # KLD Loss
@@ -364,14 +389,14 @@ if __name__ == "__main__":
             ax3.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
     plt.xlabel("Epochs")
-    plt.ylabel("Average KLD Loss")
+    plt.ylabel("Average Training KLD Loss")
     plt.savefig("{}/KLD Loss {}.png".format(save_dir, dt_string), dpi=400)
 
     # Validation Loss
     fig4 = plt.figure(4)
     ax4 = fig4.add_subplot(111)
-    plt.plot(x_axis, test_loss_meter.values[::total_test_batches], marker='.', color='tab:purple')
-    for x, y in zip(x_axis, test_loss_meter.values[::total_test_batches]):
+    plt.plot(x_axis, val_loss_meter.values[::total_val_batches], marker='.', color='tab:purple')
+    for x, y in zip(x_axis, val_loss_meter.values[::total_val_batches]):
         if x == 1 or x % 25 == 0:
             ax4.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
@@ -382,8 +407,8 @@ if __name__ == "__main__":
     # Validation Reconstruction Loss
     fig5 = plt.figure(5)
     ax5 = fig5.add_subplot(111)
-    plt.plot(x_axis, test_recon_loss_meter.values[::total_test_batches], marker='.', color='tab:orange')
-    for x, y in zip(x_axis, test_recon_loss_meter.values[::total_test_batches]):
+    plt.plot(x_axis, val_recon_loss_meter.values[::total_val_batches], marker='.', color='tab:orange')
+    for x, y in zip(x_axis, val_recon_loss_meter.values[::total_val_batches]):
         if x == 1 or x % 25 == 0:
             ax5.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
@@ -394,8 +419,8 @@ if __name__ == "__main__":
     # Validation KLD Loss
     fig6 = plt.figure(6)
     ax6 = fig6.add_subplot(111)
-    plt.plot(x_axis, test_kld_loss_meter.values[::total_test_batches], marker='.', color='tab:red')
-    for x, y in zip(x_axis, test_kld_loss_meter.values[::total_test_batches]):
+    plt.plot(x_axis, val_kld_loss_meter.values[::total_val_batches], marker='.', color='tab:red')
+    for x, y in zip(x_axis, val_kld_loss_meter.values[::total_val_batches]):
         if x == 1 or x % 25 == 0:
             ax6.annotate('  ({}, {:.4f})'.format(x, y), xy=(x, y), textcoords='data', fontsize=9)
     plt.title("Product of Experts: RNA-seq and GCN (gistic2)\nLatent space : {}, LR: {}".format(args.n_latents, args.lr))
