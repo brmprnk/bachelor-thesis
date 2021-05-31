@@ -79,6 +79,40 @@ def loss_function(recon_rna, rna, recon_gcn, gcn, recon_dna, dna, mu, log_var, k
     return {'loss': loss, 'Reconstruction_Loss': recons_loss, 'KLD': -kld_loss}
 
 
+def reconstruction_loss_function(key, loss_meter, recon_rna, rna, recon_gcn, gcn, recon_dna, dna) -> None:
+    """
+    Computes the VAE loss function.
+    KL(N(\mu, \sigma), N(0, 1)) = \log \frac{1}{\sigma} + \frac{\sigma^2 + \mu^2}{2} - \frac{1}{2}
+
+    :return:
+    """
+    if key == "rna":
+        rna_recon_rna = F.mse_loss(recon_rna, rna)
+        rna_recon_gcn = F.mse_loss(recon_gcn, gcn)
+        rna_recon_dna = F.mse_loss(recon_dna, dna)
+        loss_meter.modality_loss(rna_recon_rna.detach().numpy(), "rna_rna")
+        loss_meter.modality_loss(rna_recon_gcn.detach().numpy(), "rna_gcn")
+        loss_meter.modality_loss(rna_recon_dna.detach().numpy(), "rna_dna")
+
+    if key == "gcn":
+        gcn_recon_gcn = F.mse_loss(recon_gcn, gcn)
+        gcn_recon_rna = F.mse_loss(recon_rna, rna)
+        gcn_recon_dna = F.mse_loss(recon_dna, dna)
+        loss_meter.modality_loss(gcn_recon_gcn.detach().numpy(), "gcn_gcn")
+        loss_meter.modality_loss(gcn_recon_rna.detach().numpy(), "gcn_rna")
+        loss_meter.modality_loss(gcn_recon_dna.detach().numpy(), "gcn_dna")
+
+    if key == "dna":
+        dna_recon_dna = F.mse_loss(recon_dna, dna)
+        dna_recon_rna = F.mse_loss(recon_rna, rna)
+        dna_recon_gcn = F.mse_loss(recon_gcn, gcn)
+        loss_meter.modality_loss(dna_recon_dna.detach().numpy(), "dna_dna")
+        loss_meter.modality_loss(dna_recon_rna.detach().numpy(), "dna_rna")
+        loss_meter.modality_loss(dna_recon_gcn.detach().numpy(), "dna_gcn")
+
+    return
+
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
     def __init__(self, name):
@@ -89,6 +123,18 @@ class AverageMeter(object):
         self.name = name
         self.epochs = 50
         self.values = []
+        self.reconstruct_losses = {
+            "average" : [],
+            "rna_rna" : [],
+            "gcn_gcn" : [],
+            "dna_dna" : [],
+            "rna_gcn" : [],
+            "rna_dna" : [],
+            "gcn_rna": [],
+            "gcn_dna": [],
+            "dna_rna": [],
+            "dna_gcn": [],
+        }
 
     def update(self, val, n=1):
         self.val = val
@@ -96,6 +142,9 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
         self.values.append(self.avg.item())
+
+    def modality_loss(self, val, key):
+        self.reconstruct_losses[key].append(val)
 
 
 def save_checkpoint(state, lowest_loss, save_dir):
@@ -114,7 +163,7 @@ def save_checkpoint(state, lowest_loss, save_dir):
     # If this is the best checkpoint (lowest loss) thus far, copy this model to a file named model_best
     if lowest_loss:
         print("Best epoch thus far (lowest loss) --> Saving to model_best")
-        torch.save(state, os.path.join(save_dir, 'with_prior.pth.tar'))
+        torch.save(state, os.path.join(save_dir, 'best_model.pth.tar'))
 
 
 def load_checkpoint(file_path, use_cuda=False):
@@ -292,8 +341,7 @@ if __name__ == "__main__":
         test_loss = 0
 
         for batch_idx, (rna, gcn, dna) in enumerate(val_loader):
-            if batch_idx > 0:
-                print("Is there something wrong?")
+
             #
             # if epoch < args.annealing_epochs:
             #     # compute the KL annealing factor for the current mini-batch in the current epoch
@@ -303,10 +351,28 @@ if __name__ == "__main__":
             #     # by default the KL annealing factor is unity
             #     annealing_factor = 1.0
 
-            # for ease, only compute the joint loss
+            # compute reconstructions using each of the individual modalities (for results)
+            (rna_recon_rna, rna_recon_gcn, rna_recon_dna, rna_mu, rna_logvar) = model(rna=rna)
+
+            (gcn_recon_rna, gcn_recon_gcn, gcn_recon_dna, gcn_mu, gcn_logvar) = model(gcn=gcn)
+
+            (dna_recon_rna, dna_recon_gcn, dna_recon_dna, dna_mu, dna_logvar) = model(dna=dna)
+
+            reconstruction_loss_function("rna", val_recon_loss_meter, rna_recon_rna, rna,
+                                         rna_recon_gcn, gcn,
+                                         rna_recon_dna, dna)
+
+            reconstruction_loss_function("gcn", val_recon_loss_meter, gcn_recon_rna, rna,
+                                         gcn_recon_gcn, gcn,
+                                         gcn_recon_dna, dna)
+
+            reconstruction_loss_function("dna", val_recon_loss_meter, dna_recon_rna, rna,
+                                         dna_recon_gcn, gcn,
+                                         dna_recon_dna, dna)
+
+            # for ease, only compute the joint loss in validation
             (joint_recon_rna, joint_recon_gcn, joint_recon_dna, joint_mu, joint_logvar) = model(rna, gcn)
 
-            print("LEN RNA", len(rna), len(val_loader.dataset))
             kld_weight = len(rna) / len(val_loader.dataset)  # Account for the minibatch samples from the dataset
 
             # Compute joint loss
@@ -314,12 +380,6 @@ if __name__ == "__main__":
                                             joint_recon_gcn, gcn,
                                             joint_recon_dna, dna,
                                             joint_mu, joint_logvar, kld_weight)
-
-            # # compute joint loss
-            # joint_train_loss = elbo_loss(joint_recon_rna, rna,
-            #                              joint_recon_gcn, gcn,
-            #                              joint_mu, joint_logvar,
-            #                              annealing_factor=annealing_factor)
 
             val_loss_meter.update(joint_test_loss['loss'], len(rna))
             val_recon_loss_meter.update(joint_test_loss['Reconstruction_Loss'], len(rna))
@@ -352,6 +412,16 @@ if __name__ == "__main__":
             'latent_dim': args.n_latents,
             'optimizer': optimizer.state_dict(),
         }, True, save_dir)
+
+    # Save all reconstruction losses
+    modal = ['rna', 'gcn', 'dna']
+    for modal1 in modal:
+        for modal2 in modal:
+            key = "{}_{}".format(modal1, modal2)
+            print(key)
+            print(val_recon_loss_meter.reconstruct_losses[key])
+            np.save("{}/Recon array {}.npy".format(save_dir, key),
+                    np.array(val_recon_loss_meter.reconstruct_losses[key]))
 
     # Do some plotting
     x_axis = [*range(1, args.epochs + 1)]
