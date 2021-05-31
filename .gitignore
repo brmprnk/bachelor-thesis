@@ -7,7 +7,6 @@
 src/.ipynb_checkpoints
 /data
 /vision/results
-/vision/trained_models
 
 # Don't track these files
 .DS_Store

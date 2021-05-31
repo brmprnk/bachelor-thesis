@@ -1,0 +1,23 @@
+# FROM Product of Experts running at 31-05-2021 12:47:08
+# Input args : Namespace(latent_dim=128, batch_size=256, epochs=100, lr=0.0001, cuda=False, num_hidden_layers=1, hidden_layer_dim=256, seed=1)
+GCN from RNA at PoE 31-05-2021 12:47:08 ||| 0.187183678150177
+DNA from RNA at PoE 31-05-2021 12:47:08 ||| 0.10178180038928986
+RNA from GCN at PoE 31-05-2021 12:47:08 ||| 0.08658463507890701
+DNA from GCN at PoE 31-05-2021 12:47:08 ||| 0.10178492963314056
+RNA from DNA at PoE 31-05-2021 12:47:08 ||| 0.08659809082746506
+GCN from DNA at PoE 31-05-2021 12:47:08 ||| 0.13202133774757385
+RNA from RNA (unimodal) at PoE 31-05-2021 12:47:08 ||| 0.08659981191158295
+GCN from GCN (unimodal) at PoE 31-05-2021 12:47:08 ||| 0.1871628761291504
+DNA from DNA (unimodal) at PoE 31-05-2021 12:47:08 ||| 0.08422283083200455
+
+# FROM Mixture of Experts
+# Input args : Namespace(latent_dim=128, batch_size=256, epochs=100, lr=0.0001, cuda=False, num_hidden_layers=1, hidden_layer_dim=256, seed=1)
+GCN from RNA at MoE 31-05-2021 12:47:08 ||| 0.30725568532943726
+DNA from RNA at MoE 31-05-2021 12:47:08 ||| 0.4897836148738861
+RNA from GCN at MoE 31-05-2021 12:47:08 ||| 0.3021275997161865
+DNA from GCN at MoE 31-05-2021 12:47:08 ||| 0.48969361186027527
+RNA from DNA at MoE 31-05-2021 12:47:08 ||| 0.30212751030921936
+GCN from DNA at MoE 31-05-2021 12:47:08 ||| 0.30704766511917114
+RNA from RNA (unimodal) at MoE 31-05-2021 12:47:08 ||| 0.3020807206630707
+GCN from GCN (unimodal) at MoE 31-05-2021 12:47:08 ||| 0.30718329548835754
+DNA from DNA (unimodal) at MoE 31-05-2021 12:47:08 ||| 0.48947858810424805

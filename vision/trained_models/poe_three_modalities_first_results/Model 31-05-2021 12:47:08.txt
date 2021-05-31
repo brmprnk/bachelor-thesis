@@ -1,0 +1,72 @@
+Running at 31-05-2021 12:47:08
+Input shape : 5908, 3000
+Input args : Namespace(n_latents=128, batch_size=256, epochs=100, annealing_epochs=2, lr=0.0001, log_interval=10, cuda=False, seed=1)
+PoE Model : MVAE(
+  (rna_encoder): Encoder(
+    (encoder): Sequential(
+      (0): Sequential(
+        (0): Linear(in_features=3000, out_features=256, bias=True)
+        (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (2): ReLU()
+      )
+    )
+    (fc_mu): Linear(in_features=256, out_features=128, bias=True)
+    (fc_var): Linear(in_features=256, out_features=128, bias=True)
+  )
+  (gcn_encoder): Encoder(
+    (encoder): Sequential(
+      (0): Sequential(
+        (0): Linear(in_features=3000, out_features=256, bias=True)
+        (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (2): ReLU()
+      )
+    )
+    (fc_mu): Linear(in_features=256, out_features=128, bias=True)
+    (fc_var): Linear(in_features=256, out_features=128, bias=True)
+  )
+  (dna_encoder): Encoder(
+    (encoder): Sequential(
+      (0): Sequential(
+        (0): Linear(in_features=3000, out_features=256, bias=True)
+        (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (2): ReLU()
+      )
+    )
+    (fc_mu): Linear(in_features=256, out_features=128, bias=True)
+    (fc_var): Linear(in_features=256, out_features=128, bias=True)
+  )
+  (rna_decoder): Decoder(
+    (decoder): Sequential(
+      (0): Linear(in_features=128, out_features=256, bias=True)
+      (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): ReLU()
+    )
+    (final_layer): Sequential(
+      (0): Linear(in_features=256, out_features=3000, bias=True)
+      (1): Sigmoid()
+    )
+  )
+  (gcn_decoder): Decoder(
+    (decoder): Sequential(
+      (0): Linear(in_features=128, out_features=256, bias=True)
+      (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): ReLU()
+    )
+    (final_layer): Sequential(
+      (0): Linear(in_features=256, out_features=3000, bias=True)
+      (1): Sigmoid()
+    )
+  )
+  (dna_decoder): Decoder(
+    (decoder): Sequential(
+      (0): Linear(in_features=128, out_features=256, bias=True)
+      (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (2): ReLU()
+    )
+    (final_layer): Sequential(
+      (0): Linear(in_features=256, out_features=3000, bias=True)
+      (1): Sigmoid()
+    )
+  )
+  (experts): ProductOfExperts()
+)
