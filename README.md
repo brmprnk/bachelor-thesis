@@ -18,7 +18,10 @@ This section should contain installation, testing, and running instructions for 
 - You can specify that the user should have a certain operating system.
 
 --->
- 
+It is highly recommended to run this branch in a new Anaconda environment.
+The configuration for the Conda environment used in this research is found ```poe_conda_environment.yml```.
+This file can be used to create a setup and ready to go environment for this branch.
+
 ## Branch Structure
 ```
 |---vision/
