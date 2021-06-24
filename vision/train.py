@@ -177,11 +177,13 @@ def load_checkpoint(file_path, use_cuda=False):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n-latents', type=int, default=100,
+    parser.add_argument('--experiment', type=str, default="",
+                        help='Name of the experiment being conducted for saving purposes')
+    parser.add_argument('--n-latents', type=int, default=128,
                         help='size of the latent embedding (default: 250)')
     parser.add_argument('--batch-size', type=int, default=256, metavar='N',
                         help='input batch size for training (default: 50)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+    parser.add_argument('--epochs', type=int, default=100, metavar='N',
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--annealing-epochs', type=int, default=2, metavar='N',
                         help='number of epochs to anneal KL for [default: 20]')
@@ -207,7 +209,7 @@ if __name__ == "__main__":
     now = datetime.now()
     dt_string = now.strftime("%d-%m-%Y %H:%M:%S")
 
-    save_dir = './results/PoE {}'.format(dt_string)
+    save_dir = './results/PoE {} {}'.format(args.experiment, dt_string)
     os.makedirs(save_dir)
 
     # Fetch Datasets
@@ -215,7 +217,7 @@ if __name__ == "__main__":
     train_dataset = tcga_data.get_data_partition("train")
     val_dataset = tcga_data.get_data_partition("val")
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=len(val_dataset), shuffle=False)  # (1 batch)
 
     total_batches = len(train_loader)
@@ -418,8 +420,6 @@ if __name__ == "__main__":
     for modal1 in modal:
         for modal2 in modal:
             key = "{}_{}".format(modal1, modal2)
-            print(key)
-            print(val_recon_loss_meter.reconstruct_losses[key])
             np.save("{}/Recon array {}.npy".format(save_dir, key),
                     np.array(val_recon_loss_meter.reconstruct_losses[key]))
 

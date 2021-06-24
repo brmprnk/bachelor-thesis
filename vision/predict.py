@@ -3,6 +3,8 @@ import torch
 from sklearn.metrics import mean_squared_error
 from train import load_checkpoint
 import datasets
+import numpy as np
+import pandas as pd
 
 
 def predict_loss(recon_data, input_data):
@@ -19,11 +21,11 @@ def predict_loss(recon_data, input_data):
 if __name__ == "__main__":
 
     print("-----   Loading Trained Model   -----")
-    model_path = "/Users/bram/multimodal-vae-public-master/vision/results/three_modal_first_results/best_model.pth.tar"
+    model_path = "/Users/bram/multimodal-vae-public-master/vision/results/PoE cancer3 14-06-2021 09:09:39/best_model.pth.tar"
     model = load_checkpoint(model_path, use_cuda=False)
     model.eval()
 
-    indices_path = "/Users/bram/multimodal-vae-public-master/vision/results/three_modal_first_results"
+    indices_path = "/Users/bram/multimodal-vae-public-master/vision/results/PoE cancer3 14-06-2021 09:09:39"
     tcga_data = datasets.TCGAData(indices_path=indices_path)
 
     predict_dataset = tcga_data.get_data_partition("predict")
@@ -62,7 +64,7 @@ if __name__ == "__main__":
     # print("dna loss = ", dna_loss)
 
     # Output results
-    result_dir = "/Users/bram/multimodal-vae-public-master/vision/results/three_modal_first_results"
+    result_dir = indices_path
     # Current Time from model for output files
     dt_string = "temp"
 
