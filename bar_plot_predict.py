@@ -6,20 +6,20 @@ import matplotlib.pyplot as plt
 BAR_WIDTH = 0.3
 NUM_DECIMALS = 4
 
-## Prediction loss with MMVAE's (CROSSMODAL)
+# # Prediction loss with MMVAE's (CROSSMODAL)
 # labels = ['RNA --> GCN', 'RNA --> DNA',
 #           'GCN --> RNA', 'GCN --> DNA',
 #           'DNA --> RNA', 'DNA --> GCN']
 # x = np.arange(len(labels))
 
 # # set heights of bars ( RNA_GCN - RNA_DNA - GCN_RNA - GCN_DNA - DNA_RNA - DNA_GCN)
-# MOE_CROSS = [np.round(0.30725568532943726, NUM_DECIMALS), np.round(0.4897836148738861, NUM_DECIMALS),
-#              np.round(0.3021275997161865, NUM_DECIMALS), np.round(0.48969361186027527, NUM_DECIMALS),
-#              np.round(0.30212751030921936, NUM_DECIMALS), np.round(0.30704766511917114, NUM_DECIMALS)]
+# MOE_CROSS = [np.round(0.313908189535141, NUM_DECIMALS), np.round(0.4422634541988373, NUM_DECIMALS),
+#              np.round(0.34717288613319397, NUM_DECIMALS), np.round(0.44349557161331177, NUM_DECIMALS),
+#              np.round(0.3480072319507599, NUM_DECIMALS), np.round(0.3141525685787201, NUM_DECIMALS)]
 
-# POE_CROSS = [np.round(0.187183678150177, NUM_DECIMALS), np.round(0.10178180038928986, NUM_DECIMALS),
-#              np.round(0.08658463507890701, NUM_DECIMALS), np.round(0.10178492963314056, NUM_DECIMALS),
-#              np.round(0.08659809082746506, NUM_DECIMALS), np.round(0.13202133774757385, NUM_DECIMALS)]
+# POE_CROSS = [np.round(0.0454573780298233, NUM_DECIMALS),   np.round(0.0906691923737526, NUM_DECIMALS),
+#              np.round(0.023636458441615105, NUM_DECIMALS), np.round(0.09066056460142136, NUM_DECIMALS),
+#              np.round(0.02375185117125511, NUM_DECIMALS),  np.round(0.04365384951233864, NUM_DECIMALS)]
 
 # fig, ax = plt.subplots()
 # rects1 = ax.bar(x - BAR_WIDTH/2, MOE_CROSS, BAR_WIDTH, label='Mixture of Experts', color="#bc5090")
@@ -32,6 +32,7 @@ NUM_DECIMALS = 4
 #              .format(128, 256, 100, 0.001))
 
 # ax.set_xticks(x)
+# ax.set_ylim([0, 0.52])
 # ax.set_xticklabels(labels, fontsize=8)
 # ax.legend()
 
@@ -40,18 +41,19 @@ NUM_DECIMALS = 4
 
 # fig.tight_layout()
 
-# save_dir = "/Users/bram/Desktop"
-# plt.savefig("{}/Prediction Loss Crossmodal 3 Modalities 31 May.png".format(save_dir), dpi=600)
+
+# save_dir = "/Users/bram/Desktop/cancer3_experiment"
+# plt.savefig("{}/Prediction Loss Crossmodal 14 June cancer3.png".format(save_dir), dpi=600)
 # plt.show()
 
-## Prediction loss with MMVAE's (UNIMODAL)
+# Prediction loss with MMVAE's (UNIMODAL)
 
 labels = ['RNA --> RNA', 'GCN --> GCN', 'DNA --> DNA']
 x = np.arange(len(labels))
 
 # set heights of bars ( MoE - PoE)
-MOE_UNIMODAL = [np.round(0.3020807206630707, NUM_DECIMALS), np.round(0.30718329548835754, 4), np.round(0.48947858810424805, 4)]
-POE_UNIMODAL = [np.round(0.08659981191158295, NUM_DECIMALS), np.round(0.1871628761291504, 4), np.round(0.08422283083200455, 4)]
+MOE_UNIMODAL = [np.round(0.347678542137146, NUM_DECIMALS), np.round(0.31398168206214905, 4), np.round(0.4437776803970337, 4)]
+POE_UNIMODAL = [np.round(0.023760493844747543, NUM_DECIMALS), np.round(0.04532989487051964, 4), np.round(0.08991391211748123, 4)]
 
 fig, ax = plt.subplots()
 rects1 = ax.bar(x - BAR_WIDTH/2, MOE_UNIMODAL, BAR_WIDTH, label='Mixture of Experts', color="#bc5090")
@@ -73,6 +75,8 @@ ax.bar_label(rects2, padding=3, fontsize=7)
 
 fig.tight_layout()
 
-save_dir = "/Users/bram/Desktop"
-plt.savefig("{}/Prediction Loss Unimodal 3 Modalities 31 May.png".format(save_dir), dpi=600)
+ax.set_ylim([0, 0.52])
+
+save_dir = "/Users/bram/Desktop/cancer3_experiment"
+plt.savefig("{}/Prediction Loss Unimodal 14 June cancer3.png".format(save_dir), dpi=600)
 plt.show()
