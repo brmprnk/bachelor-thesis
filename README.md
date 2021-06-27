@@ -4,8 +4,8 @@
 [![Python Version](https://img.shields.io/static/v1.svg?label=minimal_python_version&message=3.8.8&color=blue)](https://www.python.org/downloads)
 
 ## Description of the Product of Experts in this research
-See Research Paper Section 3.2.
-For the Product-of-Experts (PoE) MVAE model, proposed by Wu and Goodman, the joint posterior is a product of individual posteriors. This approach is originally introduced by Hinton. The idea is that each unimodal VAE in the model is considered an expert. In PoE, "each expert holds the power of veto—in the sense that the joint distribution will have low density for a given set of observations if just one of the marginal posteriors has low density", as explained by a contrasting section in the original MoE paper. This implies that experts with high precision are weighing more heavily in determining the posterior distribution than lower density experts, since we take a product. The general formula from the paper is given in the Research Paper, and also in the original paper. A more in-depth look is also given in the original paper's supplement.
+Link to paper will be uploaded after submission has finalized.
+
 Forked from https://github.com/kodaim1115/scMM
 
 ## Getting Started
