@@ -4,9 +4,7 @@
 [![Python Version](https://img.shields.io/static/v1.svg?label=minimal_python_version&message=3.8.8&color=blue)](https://www.python.org/downloads)
 
 ## Description of the Mixture of Experts in this research
-In the Mixture-of-Experts (MoE) MVAE model as proposed by Shi et al., the joint variational posterior is given as a combination of unimodal posteriors, using a MoE approach. Further details on the mathematics are presented in the original paper.
-
-This repository was originally written for dualomics analysis, transciptome and surface protein data with chromatin accessibility data. This was expanded to the three different modalities in this paper. Furthermore, feature vectors in the original paper are modelled by a negative binomial distribution for transciptome and surface protein data and with a zero-inflated negative binomial for chromatin accessibility data. In this work, each modality is modelled by a normal distribution, akin to the Pytorch-VAE Vanilla-VAE model. With a normal distribution, the encoder can be trained to return the mean and the covariance matrix that describe the posterior distributions.
+Link to paper will be uploaded after submission has finalized.
 
 Forked from https://github.com/kodaim1115/scMM
 
